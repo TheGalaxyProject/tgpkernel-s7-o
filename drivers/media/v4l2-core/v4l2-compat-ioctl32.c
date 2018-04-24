@@ -175,13 +175,6 @@ static inline int put_v4l2_sliced_vbi_format(struct v4l2_sliced_vbi_format __use
 {
 	if (copy_in_user(up, kp, sizeof(struct v4l2_sliced_vbi_format)))
 		return -EFAULT;
-	uclips = compat_ptr(p);
-	while (clipcount--) {
-		if (copy_in_user(&uclips->c, &kclips->c, sizeof(uclips->c)))
-			return -EFAULT;
-		uclips++;
-		kclips++;
-	}
 	return 0;
 }
 
@@ -426,16 +419,13 @@ static int get_v4l2_plane32(struct v4l2_plane __user *up,
 			put_user((unsigned long) compat_ptr(p),
 				&up->m.userptr))
 			return -EFAULT;
-		break;
-	case V4L2_MEMORY_USERPTR:
-		if (get_user(p, &up32->m.userptr) ||
-		    put_user((unsigned long)compat_ptr(p), &up->m.userptr))
+	} else if (memory == V4L2_MEMORY_DMABUF) {
+		if (copy_in_user(&up->m.fd, &up32->m.fd, sizeof(int)))
 			return -EFAULT;
-		break;
-	case V4L2_MEMORY_DMABUF:
-		if (copy_in_user(&up->m.fd, &up32->m.fd, sizeof(up32->m.fd)))
+	} else {
+		if (copy_in_user(&up->m.mem_offset, &up32->m.mem_offset,
+					sizeof(__u32)))
 			return -EFAULT;
-		break;
 	}
 
 	return 0;
@@ -505,6 +495,7 @@ static int get_v4l2_buffer32(struct v4l2_buffer __user *kp, struct
 	struct v4l2_plane32 __user *uplane32;
 	struct v4l2_plane __user *uplane;
 	compat_caddr_t p;
+	int num_planes;
 	int ret;
 
 	if (!access_ok(VERIFY_READ, up, sizeof(struct v4l2_buffer32)) ||
@@ -537,15 +528,13 @@ static int get_v4l2_buffer32(struct v4l2_buffer __user *kp, struct
 			 * need planes array on DQBUF*/
 			return put_user(NULL, &kp->m.planes);
 		}
-		if (num_planes > VIDEO_MAX_PLANES)
-			return -EINVAL;
 
 		if (get_user(p, &up->m.planes))
 			return -EFAULT;
 
 		uplane32 = compat_ptr(p);
 		if (!access_ok(VERIFY_READ, uplane32,
-			       num_planes * sizeof(*uplane32)))
+				num_planes * sizeof(struct v4l2_plane32)))
 			return -EFAULT;
 
 		/* We don't really care if userspace decides to kill itself
@@ -562,8 +551,8 @@ static int get_v4l2_buffer32(struct v4l2_buffer __user *kp, struct
 			ret = get_v4l2_plane32(uplane, uplane32, memory);
 			if (ret)
 				return ret;
-			uplane++;
-			uplane32++;
+			++uplane;
+			++uplane32;
 		}
 	} else {
 		switch (memory) {
@@ -586,9 +575,6 @@ static int get_v4l2_buffer32(struct v4l2_buffer __user *kp, struct
 			if (convert_in_user(&up->m.offset, &kp->m.offset))
 				return -EFAULT;
 			break;
-				return -EFAULT;
-			break;
-		}
 		case V4L2_MEMORY_DMABUF:
 			if (convert_in_user(&up->m.fd, &kp->m.fd))
 				return -EFAULT;
@@ -607,6 +593,7 @@ static int put_v4l2_buffer32(struct v4l2_buffer __user *kp, struct v4l2_buffer32
 	struct v4l2_plane32 __user *uplane32;
 	struct v4l2_plane __user *uplane;
 	compat_caddr_t p;
+	int num_planes;
 	int ret;
 
 	if (!access_ok(VERIFY_WRITE, up, sizeof(struct v4l2_buffer32)) ||
@@ -764,50 +751,22 @@ struct v4l2_ext_control32 {
 	};
 } __attribute__ ((packed));
 
-/* Return true if this control is a pointer type. */
-static inline bool ctrl_is_pointer(struct file *file, u32 id)
+/* The following function really belong in v4l2-common, but that causes
+   a circular dependency between modules. We need to think about this, but
+   for now this will do. */
+
+/* Return non-zero if this control is a pointer type. Currently only
+   type STRING is a pointer type. */
+static inline int ctrl_is_pointer(u32 id)
 {
-	struct video_device *vdev = video_devdata(file);
-	struct v4l2_fh *fh = NULL;
-	struct v4l2_ctrl_handler *hdl = NULL;
-	struct v4l2_query_ext_ctrl qec = { id };
-	const struct v4l2_ioctl_ops *ops = vdev->ioctl_ops;
-
-	if (test_bit(V4L2_FL_USES_V4L2_FH, &vdev->flags))
-		fh = file->private_data;
-
-	if (fh && fh->ctrl_handler)
-		hdl = fh->ctrl_handler;
-	else if (vdev->ctrl_handler)
-		hdl = vdev->ctrl_handler;
-
-	if (hdl) {
-		struct v4l2_ctrl *ctrl = v4l2_ctrl_find(hdl, id);
-
-		return ctrl && ctrl->is_ptr;
+	switch (id) {
+	case V4L2_CID_RDS_TX_PS_NAME:
+	case V4L2_CID_RDS_TX_RADIO_TEXT:
+		return 1;
+	default:
+		return 0;
 	}
-
-	if (!ops || !ops->vidioc_query_ext_ctrl)
-		return false;
-
-	return !ops->vidioc_query_ext_ctrl(file, fh, &qec) &&
-		(qec.flags & V4L2_CTRL_FLAG_HAS_PAYLOAD);
 }
-
-static int bufsize_v4l2_ext_controls(struct v4l2_ext_controls32 __user *up,
-				     u32 *size)
-{
-	u32 count;
-
-	if (!access_ok(VERIFY_READ, up, sizeof(*up)) ||
-	    get_user(count, &up->count))
-		return -EFAULT;
-	if (count > V4L2_CID_MAX_CTRLS)
-		return -EINVAL;
-	*size = count * sizeof(struct v4l2_ext_control);
-	return 0;
-}
-
 
 static int bufsize_v4l2_ext_controls32(struct v4l2_ext_controls32 __user *up)
 {
@@ -861,7 +820,7 @@ static int get_v4l2_ext_controls32(struct v4l2_ext_controls __user *kp, struct
 		if (get_user(id, &kcontrols->id))
 			return -EFAULT;
 
-		if (ctrl_is_pointer(file, id)) {
+		if (ctrl_is_pointer(id)) {
 			void __user *s;
 
 			if (get_user(p, &ucontrols->string))
@@ -895,9 +854,6 @@ static int put_v4l2_ext_controls32(struct v4l2_ext_controls __user *kp, struct v
 	if (!count)
 		return 0;
 
-
-	if (!count)
-		return 0;
 	if (get_user(p, &up->controls))
 		return -EFAULT;
 	ucontrols = compat_ptr(p);
@@ -909,24 +865,15 @@ static int put_v4l2_ext_controls32(struct v4l2_ext_controls __user *kp, struct v
 		unsigned size = sizeof(*ucontrols);
 		u32 id;
 
-		if (get_user(id, &kcontrols->id) ||
-		    put_user(id, &ucontrols->id) ||
-		    assign_in_user(&ucontrols->size, &kcontrols->size) ||
-		    copy_in_user(&ucontrols->reserved2, &kcontrols->reserved2,
-				 sizeof(ucontrols->reserved2)))
+		if (get_user(id, &kcontrols->id))
 			return -EFAULT;
-
-		/*
-		 * Do not modify the pointer when copying a pointer control.
-		 * The contents of the pointer was changed, not the pointer
-		 * itself.
-		 */
-		if (ctrl_is_pointer(file, id))
+		/* Do not modify the pointer when copying a pointer control.
+		   The contents of the pointer was changed, not the pointer
+		   itself. */
+		if (ctrl_is_pointer(id))
 			size -= sizeof(ucontrols->value64);
-
 		if (copy_in_user(ucontrols, kcontrols, size))
 			return -EFAULT;
-
 		ucontrols++;
 		kcontrols++;
 	}
