@@ -2,6 +2,8 @@
 #include <linux/init.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/string.h> 
+
 #include <asm/setup.h>
 
 static char new_command_line[COMMAND_LINE_SIZE];
@@ -24,6 +26,16 @@ static const struct file_operations cmdline_proc_fops = {
 	.release	= single_release,
 };
 
+static void insert_flag(const char* cmd, char* flag)
+{ 
+	char *start_addr = new_command_line;
+	
+	strcpy(start_addr, cmd);
+
+	strcat(start_addr, " ");
+	strcat(start_addr, flag);
+}
+
 static void remove_flag(char *cmd, const char *flag)
 {
 	char *start_addr, *end_addr;
@@ -44,6 +56,17 @@ static void remove_safetynet_flags(char *cmd)
 	remove_flag(cmd, "androidboot.secboot=");
 	remove_flag(cmd, "androidboot.verifiedbootstate=");
 	remove_flag(cmd, "androidboot.veritymode=");
+	remove_flag(cmd, "androidboot.fmp_config=");
+	remove_flag(cmd, "androidboot.warranty_bit=");
+}
+
+static void insert_safetynet_flags(char *cmd)
+{	
+	insert_flag(cmd, "androidboot.verifiedbootstate=green");
+	insert_flag(cmd, "androidboot.ddrinfo=00000001");
+	insert_flag(cmd, "androidboot.veritymode=enforcing");
+	insert_flag(cmd, "androidboot.fmp_config=1");
+	insert_flag(cmd, "androidboot.warranty_bit=0");
 }
 
 static int __init proc_cmdline_init(void)
@@ -55,6 +78,8 @@ static int __init proc_cmdline_init(void)
 	 * pass SafetyNet CTS check.
 	 */
 	remove_safetynet_flags(new_command_line);
+	
+	insert_safetynet_flags(new_command_line);	
 
 	proc_create("cmdline", 0, NULL, &cmdline_proc_fops);
 	return 0;
