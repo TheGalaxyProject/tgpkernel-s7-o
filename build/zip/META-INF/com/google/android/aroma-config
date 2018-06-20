@@ -1,0 +1,556 @@
+# ---------------------------
+# TGPKERNEL INSTALLER 4.11.9
+# Created by @djb77
+# ---------------------------
+
+# ROM INFO
+# --------
+ini_set("force_colorspace","rgba");
+ini_set("rom_name", "TGPKernel");
+ini_set("rom_version", "");
+ini_set("rom_author", "djb77");
+ini_set("rom_device", "SM-G93XX");
+ini_set("rom_date", "");
+
+# SETUP
+# -----
+writetmpfile("adb.prop","install=0");
+writetmpfile("advanced.prop","install=0");
+writetmpfile("anykernel.prop","install=1");
+writetmpfile("backup.prop","install=0");
+writetmpfile("busybox.prop","install=0");
+writetmpfile("check_s7.prop","install=0");
+writetmpfile("check_n8port.prop","install=0");
+writetmpfile("check_s9port.prop","install=0");
+writetmpfile("deodexed.prop","install=0");
+writetmpfile("g930x.prop","install=0");
+writetmpfile("g935x.prop","install=0");
+writetmpfile("insecureadb.prop","install=0");
+writetmpfile("magisk.prop","install=0");
+writetmpfile("mtweaks.prop","install=0");
+writetmpfile("pwm.prop","install=0");
+writetmpfile("selinux.prop","install=0");
+writetmpfile("spectrum.prop","install=0");
+writetmpfile("splash.prop","install=0");
+writetmpfile("tgpkernel-backup.prop","install=0");
+writetmpfile("tgpkernel-restore.prop","install=0");
+writetmpfile("wipe.prop","install=0");
+writetmpfile("wireguard.prop","install=0");
+
+# SET LANGUAGE
+# ------------
+loadlang("langs/en.lang");
+
+# FONT AND THEME SELETION
+# -----------------------
+fontresload( "0", "ttf/Roboto-Regular.ttf;ttf/DroidSansArabic.ttf;ttf/DroidSansFallback.ttf;", "12" ); #-- Use sets of font (Font Family)
+theme("tgp");
+
+# SET LANGUAGE & FONT FAMILY
+# --------------------------
+loadlang("langs/en.lang");
+fontresload( "0", "ttf/Roboto-Regular.ttf", "12" ); #-- "0" = Small Font ( Look at Fonts & UNICODE Demo Below )
+fontresload( "1", "ttf/Roboto-Regular.ttf", "18" ); #-- "1" = Big Font
+
+# SPLASH SCREEN
+# -------------
+splash(3000,"splash");
+
+# INSTALLER SETUP
+# ---------------
+restotmp("files/adb","adb");
+restotmp("files/adb.bin","adb.bin");
+restotmp("files/fastboot","fastboot");
+restotmp("files/busybox","busybox");
+restotmp("files/tar","tar");
+restotmp("files/tgpkernel.sh","tgpkernel.sh");
+exec("/tmp/aroma/tgpkernel.sh","setup","","");
+
+# CHECK FOR CONFIG BACKUP
+# -----------------------
+exec("/tmp/aroma/tgpkernel.sh","config_check","","");
+if (prop("backup.prop","install")=="1") then
+	setvar(
+	"backup_text",
+	"<b><#99ccff>CONFIGURATION BACKUP FOUND</#></b>\n\n"+
+	"<#99cccc>The installer has located a saved configuration in the TGP folder on your Internal Memory.\n\n"+
+	"You will now be given an option to use this configuration and proceed straight to the installer, "+
+	"skipping all the installation selection screens.\n\n"+
+	"Press the </#><b>Next</b> <#99cccc>button, then select </#><b>Yes</b> <#99cccc>or</#> <b>No</b> <#99cccc>on the Popup Dialog Box.</#>"
+	);
+	textbox(
+	"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+	" ",
+	"@deafult",
+	getvar("backup_text")
+	);
+	if
+		confirm(
+		"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+		"Would you like to use your current saved configuration?",
+		"@default"
+		)=="yes"
+	then
+		writetmpfile("tgpkernel-restore.prop","install=1");
+	else
+		writetmpfile("tgpkernel-restore.prop","install=0");
+	endif;
+endif;
+
+if (prop("tgpkernel-restore.prop","install")=="0") then
+
+# INSTALL OPTIONS
+# ---------------
+	selectbox(
+		"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+		"<#99ccff>        Please select from the following options</#>",
+		"",
+		"tgp.prop",
+		"<#ffffcc>Backup your settings</#>", "", 2,
+		"Yes", "", 0,
+		"No", "", 1,
+		"<#ffffcc>Root selection</#>", "", 2,
+		"Magisk - Clean Install", "", 0,
+		"Magisk", "", 1,
+		"No Root", "", 0,
+		"<#ffffcc>Splash Screen Options</#>", "", 2,
+		"Install TGPKernel Splash Screen", "", 0,
+		"Install Stock Splash Screen", "", 0,
+		"Keep Current Splash Screen", "", 1
+	);
+	if (prop("tgp.prop","selected.1")=="1") then
+		writetmpfile("tgpkernel-backup.prop","install=1");
+	endif;
+	if (prop("tgp.prop","selected.2")=="1") then
+		writetmpfile("wipe.prop","install=1");
+		writetmpfile("magisk.prop","install=1");
+	endif;
+	if (prop("tgp.prop","selected.2")=="2") then
+		writetmpfile("magisk.prop","install=1");
+	endif;
+	if (prop("tgp.prop","selected.3")=="1") then
+		writetmpfile("splash.prop","install=2");
+	endif;
+	if (prop("tgp.prop","selected.3")=="2") then
+		writetmpfile("splash.prop","install=1");
+	endif;
+
+# MAIN OPTIONS - INSTALL APPS
+# ---------------------------
+	checkbox(
+		"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+		"<#99ccff>        Please select from the following options</#>",
+		"",
+		"main.prop",
+		"<#ffffcc>Install Apps</#>", "", 2,
+		"Install MTweaks", "", 0,
+		"Install WireGuard", "", 0,
+		"Install Busybox", "", 0,
+		"Install ADB", "", 0
+	);
+	if (prop("main.prop","item.1.1")=="1") then
+		writetmpfile("mtweaks.prop","install=1");
+	endif;
+	if (prop("main.prop","item.1.2")=="1") then
+		writetmpfile("wireguard.prop","install=1");
+	endif;
+	if (prop("main.prop","item.1.3")=="1") then
+		writetmpfile("busybox.prop","install=1");
+	endif;
+	if (prop("main.prop","item.1.4")=="1") then
+		writetmpfile("adb.prop","install=1");
+	endif;
+
+# MAIN OPTIONS - KERNEL OPTIONS
+# -----------------------------
+	checkbox(
+		"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+		"<#99ccff>        Please select from the following options</#>",
+		"",
+		"main2.prop",
+		"<#ffffcc>Kernel Options</#>", "", 2,
+		"Proceed to Advanced Options", "", 0,
+		"Install Spectrum", "", 0,
+		"Set Kernel to Enforcing", "", 0,
+		"Enable Insecure ADB", "", 0,
+		"Enable PWM Fix as Default", "", 0
+	);
+	if (prop("main2.prop","item.1.2")=="1") then
+		writetmpfile("anykernel.prop","install=1");
+		writetmpfile("spectrum.prop","install=1");
+	endif;
+	if (prop("main2.prop","item.1.3")=="1") then
+		writetmpfile("anykernel.prop","install=1");
+		writetmpfile("selinux.prop","install=1");
+	endif;
+	if (prop("main2.prop","item.1.4")=="1") then
+		writetmpfile("anykernel.prop","install=1");
+		writetmpfile("adb.prop","install=1");
+		writetmpfile("insecureadb.prop","install=1");
+	endif;
+	if (prop("main2.prop","item.1.5")=="1") then
+		writetmpfile("anykernel.prop","install=1");
+		writetmpfile("pwm.prop","install=1");
+	endif;
+
+# ADVANCED OPTIONS
+# ----------------
+	if (prop("main2.prop","item.1.1")=="1") then
+		writetmpfile("anykernel.prop","install=1");
+		writetmpfile("advanced.prop","install=1");
+		alert("WARNING !!", "           PLEASE PROCEED WITH CAUTION !!");
+
+# ADVANCED PAGE 1 - CPU GOVERNORS (BIG)
+# -------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"governor-big.prop",
+			"governor-big", "<#ffffcc>Select your CPU Governor (Big CPU)</#>", "", "group",
+			"alucard", "alucard", "", "select",
+			"barry_allen", "barry_allen", "", "select",
+			"bioshock", "bioshock", "", "select",
+			"blu_active", "blu_active", "", "select",
+			"cafactive", "cafactive", "", "select",
+			"conservative", "conservative", "", "select",
+			"cultivation", "cultivation", "", "select",
+			"dancedance", "dancedance", "", "select",
+			"darkness", "darkness", "", "select",
+			"electrodemand", "electrodemand", "", "select",
+			"elementalx", "elementalx", "", "select",
+			"HYPER", "hyper", "", "select",
+			"impulse", "impulse", "", "select",
+			"intelliactive", "intelliactive", "", "select",
+			"intellidemand", "intellidemand", "", "select",
+			"intellimm", "", "intellimm", "select",
+			"interactive", "interactive", "", "select.selected",
+			"ironactive", "ironactive", "", "select",
+			"Lionheart", "lionheart", "", "select",
+			"nightmare", "nightmare", "", "select",
+			"ondemand", "ondemand", "", "select",
+			"ondemandplus", "ondemandplus", "", "select",
+			"ondemand_x", "ondemand_x", "", "select",
+			"pegasusq", "pegasusq", "", "select",
+			"performance", "performance", "", "select",
+			"powersave", "powersave", "", "select",
+			"relaxed", "relaxed", "", "select",
+			"smartassV2", "smartassV2", "", "select",
+			"smartmax", "smartmax", "", "select",
+			"smartmax_eps", "smartmax_eps", "", "select",
+			"userspace", "userspace", "", "select",
+			"wheatley", "wheatley", "", "select",
+			"yankactive", "yankactive", "", "select",
+			"zzmoove", "zzmoove", "", "select"
+		);
+
+# ADVANCED PAGE 2 - CPU GOVERNORS (LITTLE)
+# ----------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"governor-little.prop",
+			"governor-little", "<#ffffcc>Select your CPU Governor (Little CPU)</#>", "", "group",
+			"alucard", "alucard", "", "select",
+			"barry_allen", "barry_allen", "", "select",
+			"bioshock", "bioshock", "", "select",
+			"blu_active", "blu_active", "", "select",
+			"cafactive", "cafactive", "", "select",
+			"conservative", "conservative", "", "select",
+			"cultivation", "cultivation", "", "select",
+			"dancedance", "dancedance", "", "select",
+			"darkness", "darkness", "", "select",
+			"electrodemand", "electrodemand", "", "select",
+			"elementalx", "elementalx", "", "select",
+			"HYPER", "hyper", "", "select",
+			"impulse", "impulse", "", "select",
+			"intelliactive", "intelliactive", "", "select",
+			"intellidemand", "intellidemand", "", "select",
+			"intellimm", "", "intellimm", "select",
+			"interactive", "interactive", "", "select.selected",
+			"ironactive", "ironactive", "", "select",
+			"Lionheart", "lionheart", "", "select",
+			"nightmare", "nightmare", "", "select",
+			"ondemand", "ondemand", "", "select",
+			"ondemandplus", "ondemandplus", "", "select",
+			"ondemand_x", "ondemand_x", "", "select",
+			"pegasusq", "pegasusq", "", "select",
+			"performance", "performance", "", "select",
+			"powersave", "powersave", "", "select",
+			"relaxed", "relaxed", "", "select",
+			"smartassV2", "smartassV2", "", "select",
+			"smartmax", "smartmax", "", "select",
+			"smartmax_eps", "smartmax_eps", "", "select",
+			"userspace", "userspace", "", "select",
+			"wheatley", "wheatley", "", "select",
+			"yankactive", "yankactive", "", "select",
+			"zzmoove", "zzmoove", "", "select"
+		);
+
+# ADVANCED PAGE 3 - MAX CPU RATE (BIG)
+# ------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"cpumax-big.prop",
+			"cpumax-big", "<#ffffcc>Select your CPU Max Freq (Big CPU)</#>", "", "group",
+			"2704", "2704 Mhz", "", "select",
+			"2600", "2600 Mhz", "", "select",
+			"2496", "2496 Mhz", "", "select",
+			"2392", "2392 Mhz", "", "select",
+			"2288", "2288 Mhz", "", "select.selected",
+			"2184", "2184 Mhz", "", "select",
+			"2080", "2080 Mhz", "", "select",
+			"1976", "1976 Mhz", "", "select",
+			"1872", "1872 Mhz", "", "select",
+			"1768", "1768 Mhz", "", "select",
+			"1664", "1664 Mhz", "", "select",
+			"1560", "1560 Mhz", "", "select",
+			"1456", "1456 Mhz", "", "select",
+			"1352", "1352 Mhz", "", "select",
+			"1248", "1248 Mhz", "", "select",
+			"1144", "1144 Mhz", "", "select",
+			"1040", "1040 Mhz", "", "select",
+			"936", "936 Mhz", "", "select",
+			"832", "832 Mhz", "", "select",
+			"728", "728 Mhz", "", "select",
+			"624", "624 Mhz", "", "select",
+			"520", "520 Mhz", "", "select",
+			"416", "416 Mhz", "", "select",
+			"312", "312 Mhz", "", "select",
+			"208", "208 Mhz", "", "select"
+		);
+
+# ADVANCED PAGE 4 - MIN CPU RATE (BIG)
+# ------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"cpumin-big.prop",
+			"cpumin-big", "<#ffffcc>Select your CPU Min Freq (Big CPU)</#>", "", "group",
+			"208", "208 Mhz", "", "select.selected",
+			"312", "312 Mhz", "", "select",
+			"416", "416 Mhz", "", "select",
+			"520", "520 Mhz", "", "select",
+			"624", "624 Mhz", "", "select",
+			"728", "728 Mhz", "", "select",
+			"832", "832 Mhz", "", "select",
+			"936", "936 Mhz", "", "select",
+			"1040", "1040 Mhz", "", "select",
+			"1144", "1144 Mhz", "", "select",
+			"1248", "1248 Mhz", "", "select",
+			"1352", "1352 Mhz", "", "select",
+			"1456", "1456 Mhz", "", "select",
+			"1560", "1560 Mhz", "", "select",
+			"1664", "1664 Mhz", "", "select",
+			"1768", "1768 Mhz", "", "select",
+			"1872", "1872 Mhz", "", "select",
+			"1976", "1976 Mhz", "", "select",
+			"2080", "2080 Mhz", "", "select",
+			"2184", "2184 Mhz", "", "select",
+			"2288", "2288 Mhz", "", "select",
+			"2392", "2392 Mhz", "", "select",
+			"2496", "2496 Mhz", "", "select",
+			"2600", "2600 Mhz", "", "select",
+			"2704", "2704 Mhz", "", "select"
+		);
+
+# ADVANCED PAGE 5 - MAX CPU RATE (LITTLE)
+# ---------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"cpumax-little.prop",
+			"cpumax-little", "<#ffffcc>Select your CPU Max Freq (Little CPU)</#>", "", "group",
+			"1794", "1794 Mhz", "", "select",
+			"1690", "1690 Mhz", "", "select",
+			"1586", "1586 Mhz", "", "select.selected",
+			"1482", "1482 Mhz", "", "select",
+			"1378", "1378 Mhz", "", "select",
+			"1274", "1274 Mhz", "", "select",
+			"1170", "1170 Mhz", "", "select",
+			"1066", "1066 Mhz", "", "select",
+			"962", "962 Mhz", "", "select",
+			"858", "858 Mhz", "", "select",
+			"754", "754 Mhz", "", "select",
+			"650", "650 Mhz", "", "select",
+			"546", "546 Mhz", "", "select",
+			"442", "442 Mhz", "", "select",
+			"338", "338 Mhz", "", "select",
+			"234", "234 Mhz", "", "select",
+			"130", "130 Mhz", "", "select"
+		);
+
+# ADVANCED PAGE 6 - MIN CPU RATE (LITTLE)
+# ---------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"cpumin-little.prop",
+			"cpumin-little", "<#ffffcc>Select your CPU Min Freq (Little CPU)</#>", "", "group",
+			"130", "130 Mhz", "", "select.selected",
+			"234", "234 Mhz", "", "select",
+			"338", "338 Mhz", "", "select",
+			"442", "442 Mhz", "", "select",
+			"546", "546 Mhz", "", "select",
+			"650", "650 Mhz", "", "select",
+			"754", "754 Mhz", "", "select",
+			"858", "858 Mhz", "", "select",
+			"962", "962 Mhz", "", "select",
+			"1066", "1066 Mhz", "", "select",
+			"1170", "1170 Mhz", "", "select",
+			"1274", "1274 Mhz", "", "select",
+			"1378", "1378 Mhz", "", "select",
+			"1482", "1482 Mhz", "", "select",
+			"1586", "1586 Mhz", "", "select",
+			"1690", "1690 Mhz", "", "select",
+			"1794", "1794 Mhz", "", "select"
+		);
+
+# ADVANCED PAGE 7 - MAX GPU RATE
+# ------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"gpumax.prop",
+			"gpumax", "<#ffffcc>Select your GPU Max Freq</#>", "", "group",
+			"806", "806 Mhz", "", "select",
+			"702", "702 Mhz", "", "select",
+			"650", "650 Mhz", "", "select.selected",
+			"600", "600 Mhz", "", "select",
+			"546", "546 Mhz", "", "select",
+			"419", "419 Mhz", "", "select",
+			"338", "338 Mhz", "", "select",
+			"260", "260 Mhz", "", "select",
+			"112", "112 Mhz", "", "select"
+		);
+
+# ADVANCED PAGE 8 - MIN GPU RATE
+# ------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"gpumin.prop",
+			"gpumin", "<#ffffcc>Select your GPU Min Freq</#>", "", "group",
+			"112", "112 Mhz", "", "select",
+			"260", "260 Mhz", "", "select.selected",
+			"338", "338 Mhz", "", "select",
+			"419", "419 Mhz", "", "select",
+			"546", "546 Mhz", "", "select",
+			"600", "600 Mhz", "", "select",
+			"650", "650 Mhz", "", "select",
+			"702", "702 Mhz", "", "select",
+			"806", "806 Mhz", "", "select"
+		);
+
+# ADVANCED PAGE 9 - IO SCHEDULERS (INTERNAL)
+# ------------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"scheduler-internal.prop",
+			"scheduler-internal", "<#ffffcc>Select your IO Scheduler (Internal)</#>", "", "group",
+			"bfq", "bfq", "", "select",
+			"cfq", "cfq", "", "select.selected",
+			"deadline", "deadline", "", "select",
+			"fifo", "fifo", "", "select",
+			"fiops", "fiops", "", "select",
+			"maple", "maple", "", "select",
+			"noop", "noop", "", "select",
+			"row", "row", "", "select",
+			"sio", "sio", "", "select",
+			"sioplus", "sioplus", "", "select",
+			"tripndroid", "tripndroid", "", "select",
+			"vr", "vr", "", "select",
+			"zen", "zen", "", "select"
+		);
+
+# ADVANCED PAGE 10 - IO SCHEDULERS (INTERNAL)
+# -------------------------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"scheduler-external.prop",
+			"scheduler-external", "<#ffffcc>Select your IO Scheduler (External)</#>", "", "group",
+			"bfq", "bfq", "", "select",
+			"cfq", "cfq", "", "select.selected",
+			"deadline", "deadline", "", "select",
+			"fifo", "fifo", "", "select",
+			"fiops", "fiops", "", "select",
+			"maple", "maple", "", "select",
+			"noop", "noop", "", "select",
+			"row", "row", "", "select",
+			"sio", "sio", "", "select",
+			"sioplus", "sioplus", "", "select",
+			"tripndroid", "tripndroid", "", "select",
+			"vr", "vr", "", "select",
+			"zen", "zen", "", "select"
+		);
+
+# ADVANCED PAGE 11 - CONGESTORS
+# -----------------------------
+		form(
+			"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+			"<#99ccff>        Please select from the following options</#>",
+			"",
+			"tcp.prop",
+			"tcp", "<#ffffcc>Select your TCP Congestion Algorithm</#>", "", "group",
+			"balia", "balia", "", "select",
+			"bic", "bic", "", "select.selected",
+			"cubic", "cubic", "", "select",
+			"dctcp", "dctcp", "", "select",
+			"htcp", "htcp", "", "select",
+			"hybla", "hybla", "", "select",
+			"illinois", "illinois", "", "select",
+			"lia", "lia", "", "select",
+			"lp", "lp", "", "select",
+			"olia", "olia", "", "select",
+			"reno", "reno", "", "select",
+			"scalable", "scalable", "", "select",
+			"vegas", "vegas", "", "select",
+			"veno", "veno", "", "select",
+			"westwood", "westwood", "", "select",
+			"wvegas", "wvegas", "", "select",
+			"yeah", "yeah", "", "select"
+		);
+
+	endif;
+
+endif;
+
+# START INSTALLER
+# ---------------
+ini_set("text_next", "Install");
+ini_set("icon_next", "@installbutton");
+viewbox(
+	"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+	"TGPKernel is ready to be installed.\n\n"+
+	"Press the Install button to begin the installation.\n\n"+
+	"To review or change any of your settings, press the Back button.",
+	""
+);
+
+
+# INSTALL PROCESS
+# --------------
+ini_set("text_next", "Finish");
+ini_set("icon_next", "@finish");
+setvar("retstatus",
+install(
+	"<#ffffff>TGPKERNEL FOR S7 / S7 EDGE</#>",
+	"<#99ccff>            The Kernel is now being installed</#>",
+	"",
+	"<#99ccff>            The Kernel has now been installed</#>"
+)
+);
+
+
