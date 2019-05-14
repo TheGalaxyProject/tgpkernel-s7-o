@@ -190,6 +190,11 @@ static void evdev_pass_values(struct evdev_client *client,
 		__pass_event(client, &event);
 		if (v->type == EV_SYN && v->code == SYN_REPORT)
 			wakeup = true;
+#ifdef CONFIG_USB_HMT_SAMSUNG_INPUT
+		if (v->type== EV_KEY && v->code >= KEY_HMT_CMD_START)
+			pr_info("%s type:KEY code:0x%x value:%x\n", __func__,
+					v->code, v->value);
+#endif
 	}
 
 	spin_unlock(&client->buffer_lock);
@@ -247,14 +252,19 @@ static int evdev_flush(struct file *file, fl_owner_t id)
 {
 	struct evdev_client *client = file->private_data;
 	struct evdev *evdev = client->evdev;
+	int retval;
 
-	mutex_lock(&evdev->mutex);
+	retval = mutex_lock_interruptible(&evdev->mutex);
+	if (retval)
+		return retval;
 
-	if (evdev->exist && !client->revoked)
-		input_flush_device(&evdev->handle, file);
+	if (!evdev->exist || client->revoked)
+		retval = -ENODEV;
+	else
+		retval = input_flush_device(&evdev->handle, file);
 
 	mutex_unlock(&evdev->mutex);
-	return 0;
+	return retval;
 }
 
 static void evdev_free(struct device *dev)
@@ -846,8 +856,8 @@ static int evdev_disable_suspend_block(struct evdev *evdev,
 
 	spin_lock_irq(&client->buffer_lock);
 	client->use_wake_lock = false;
-	spin_unlock_irq(&client->buffer_lock);
 	wake_lock_destroy(&client->wake_lock);
+	spin_unlock_irq(&client->buffer_lock);
 
 	return 0;
 }

@@ -46,6 +46,7 @@ struct thread_info {
 	struct exec_domain *exec_domain;/* execution domain */
 	__u32 cpu;			/* current CPU */
 	unsigned long thr_ptr;		/* TLS ptr */
+	struct restart_block restart_block;
 };
 
 /*
@@ -61,6 +62,9 @@ struct thread_info {
 	.cpu        = 0,			\
 	.preempt_count  = INIT_PREEMPT_COUNT,	\
 	.addr_limit = KERNEL_DS,		\
+	.restart_block  = {			\
+		.fn = do_no_restart_syscall,	\
+	},					\
 }
 
 #define init_thread_info    (init_thread_union.thread_info)

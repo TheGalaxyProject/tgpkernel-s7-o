@@ -210,8 +210,9 @@ next_op:
 		unsigned char tmp;
 
 		/* Skip conditional matches if possible */
-		if ((op & ASN1_OP_MATCH__COND && flags & FLAG_MATCHED) ||
-		    (op & ASN1_OP_MATCH__SKIP && dp == datalen)) {
+		if ((op & ASN1_OP_MATCH__COND &&
+		     flags & FLAG_MATCHED) ||
+		    dp == datalen) {
 			pc += asn1_op_lengths[op];
 			goto next_op;
 		}
@@ -220,7 +221,7 @@ next_op:
 		hdr = 2;
 
 		/* Extract a tag from the data */
-		if (unlikely(datalen - dp < 2))
+		if (unlikely(dp >= datalen - 1))
 			goto data_overrun_error;
 		tag = data[dp++];
 		if (unlikely((tag & 0x1f) == ASN1_LONG_TAG))
@@ -266,7 +267,7 @@ next_op:
 				int n = len - 0x80;
 				if (unlikely(n > 2))
 					goto length_too_long;
-				if (unlikely(n > datalen - dp))
+				if (unlikely(dp >= datalen - n))
 					goto data_overrun_error;
 				hdr += n;
 				for (len = 0; n > 0; n--) {
@@ -276,9 +277,6 @@ next_op:
 				if (unlikely(len > datalen - dp))
 					goto data_overrun_error;
 			}
-		} else {
-			if (unlikely(len > datalen - dp))
-				goto data_overrun_error;
 		}
 
 		if (flags & FLAG_CONS) {
@@ -422,8 +420,6 @@ next_op:
 			else
 				act = machine[pc + 1];
 			ret = actions[act](context, hdr, 0, data + tdp, len);
-			if (ret < 0)
-				return ret;
 		}
 		pc += asn1_op_lengths[op];
 		goto next_op;

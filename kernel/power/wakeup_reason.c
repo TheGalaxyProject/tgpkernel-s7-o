@@ -18,6 +18,7 @@
 #include <linux/wakeup_reason.h>
 #include <linux/kernel.h>
 #include <linux/irq.h>
+#include <linux/irqnr.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kobject.h>
@@ -28,11 +29,11 @@
 #include <linux/suspend.h>
 #include <linux/debugfs.h>
 
-
 #define MAX_WAKEUP_REASON_IRQS 32
 static int irq_list[MAX_WAKEUP_REASON_IRQS];
 static int irqcount;
 static bool suspend_abort;
+static bool mbox_wakeup;
 static char abort_reason[MAX_SUSPEND_ABORT_LEN];
 static struct kobject *wakeup_reason;
 static DEFINE_SPINLOCK(resume_reason_lock);
@@ -41,9 +42,6 @@ static ktime_t last_monotime; /* monotonic time before last suspend */
 static ktime_t curr_monotime; /* monotonic time after last suspend */
 static ktime_t last_stime; /* monotonic boottime offset before last suspend */
 static ktime_t curr_stime; /* monotonic boottime offset after last suspend */
-#if IS_ENABLED(CONFIG_SUSPEND_TIME)
-static unsigned int time_in_suspend_bins[32];
-#endif
 
 static ssize_t last_resume_reason_show(struct kobject *kobj, struct kobj_attribute *attr,
 		char *buf)
@@ -63,6 +61,9 @@ static ssize_t last_resume_reason_show(struct kobject *kobj, struct kobj_attribu
 				buf_offset += sprintf(buf + buf_offset, "%d\n",
 						irq_list[irq_no]);
 		}
+		/* show INT_MBOX instead of Unknown to distinguish CP wakeup */
+		if (mbox_wakeup)
+			buf_offset += sprintf(buf, "%d %s", nr_irqs+1, "INT_MBOX");
 	}
 	spin_unlock(&resume_reason_lock);
 	return buf_offset;
@@ -134,6 +135,22 @@ void log_wakeup_reason(int irq)
 	spin_unlock(&resume_reason_lock);
 }
 
+void log_mbox_wakeup(void)
+{
+	spin_lock(&resume_reason_lock);
+
+	// Mbox wakeup has already been occured.
+	if (mbox_wakeup) {
+		spin_unlock(&resume_reason_lock);
+		return;
+	}
+
+	mbox_wakeup = true;
+	spin_unlock(&resume_reason_lock);
+
+	printk(KERN_INFO "Resume caused by INT_MBOX\n");
+}
+
 int check_wakeup_reason(int irq)
 {
 	int irq_no;
@@ -172,16 +189,12 @@ void log_suspend_abort_reason(const char *fmt, ...)
 static int wakeup_reason_pm_event(struct notifier_block *notifier,
 		unsigned long pm_event, void *unused)
 {
-#if IS_ENABLED(CONFIG_SUSPEND_TIME)
-	ktime_t temp;
-	struct timespec suspend_time;
-#endif
-
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
 		spin_lock(&resume_reason_lock);
 		irqcount = 0;
 		suspend_abort = false;
+		mbox_wakeup = false;
 		spin_unlock(&resume_reason_lock);
 		/* monotonic time since boot */
 		last_monotime = ktime_get();
@@ -193,15 +206,6 @@ static int wakeup_reason_pm_event(struct notifier_block *notifier,
 		curr_monotime = ktime_get();
 		/* monotonic time since boot including the time spent in suspend */
 		curr_stime = ktime_get_boottime();
-
-#if IS_ENABLED(CONFIG_SUSPEND_TIME)
-		temp = ktime_sub(ktime_sub(curr_stime, last_stime),
-				ktime_sub(curr_monotime, last_monotime));
-		suspend_time = ktime_to_timespec(temp);
-		time_in_suspend_bins[fls(suspend_time.tv_sec)]++;
-		pr_info("Suspended for %lu.%03lu seconds\n", suspend_time.tv_sec,
-			suspend_time.tv_nsec / NSEC_PER_MSEC);
-#endif
 		break;
 	default:
 		break;
@@ -212,51 +216,6 @@ static int wakeup_reason_pm_event(struct notifier_block *notifier,
 static struct notifier_block wakeup_reason_pm_notifier_block = {
 	.notifier_call = wakeup_reason_pm_event,
 };
-
-#if IS_ENABLED(CONFIG_DEBUG_FS) && IS_ENABLED(CONFIG_SUSPEND_TIME)
-static int suspend_time_debug_show(struct seq_file *s, void *data)
-{
-	int bin;
-	seq_printf(s, "time (secs)  count\n");
-	seq_printf(s, "------------------\n");
-	for (bin = 0; bin < 32; bin++) {
-		if (time_in_suspend_bins[bin] == 0)
-			continue;
-		seq_printf(s, "%4d - %4d %4u\n",
-			bin ? 1 << (bin - 1) : 0, 1 << bin,
-				time_in_suspend_bins[bin]);
-	}
-	return 0;
-}
-
-static int suspend_time_debug_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, suspend_time_debug_show, NULL);
-}
-
-static const struct file_operations suspend_time_debug_fops = {
-	.open		= suspend_time_debug_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static int __init suspend_time_debug_init(void)
-{
-	struct dentry *d;
-
-	d = debugfs_create_file("suspend_time", 0755, NULL, NULL,
-		&suspend_time_debug_fops);
-	if (!d) {
-		pr_err("Failed to create suspend_time debug file\n");
-		return -ENOMEM;
-	}
-
-	return 0;
-}
-
-late_initcall(suspend_time_debug_init);
-#endif
 
 /* Initializes the sysfs parameter
  * registers the pm_event notifier
@@ -286,3 +245,69 @@ int __init wakeup_reason_init(void)
 }
 
 late_initcall(wakeup_reason_init);
+
+#ifdef CONFIG_ARCH_EXYNOS
+#define NR_EINT		32
+struct wakeup_reason_stats {
+	int irq;
+	unsigned int wakeup_count;
+};
+static struct wakeup_reason_stats wakeup_reason_stats[NR_EINT] = {{0,},};
+
+void update_wakeup_reason_stats(int irq, int eint)
+{
+	if (eint >= NR_EINT) {
+		pr_info("%s : can't update wakeup reason stat infomation\n", __func__);
+		return;
+	}
+
+	wakeup_reason_stats[eint].irq = irq;
+	wakeup_reason_stats[eint].wakeup_count++;
+}
+
+#ifdef CONFIG_DEBUG_FS
+static int wakeup_reason_stats_show(struct seq_file *s, void *unused)
+{
+	int i;
+
+	seq_puts(s, "eint_no\tirq\twakeup_count\tname\n");
+	for (i = 0; i < NR_EINT; i++) {
+		struct irq_desc *desc = irq_to_desc(wakeup_reason_stats[i].irq);
+		const char *irq_name = NULL;
+
+		if (!wakeup_reason_stats[i].irq)
+			continue;
+
+		if (desc && desc->action && desc->action->name)
+			irq_name = desc->action->name;
+
+		seq_printf(s, "%d\t%d\t%u\t\t%s\n", i,
+				wakeup_reason_stats[i].irq,
+				wakeup_reason_stats[i].wakeup_count, irq_name);
+	}
+
+	return 0;
+}
+
+static int wakeup_reason_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, wakeup_reason_stats_show, NULL);
+}
+
+static const struct file_operations wakeup_reason_stats_ops = {
+	.open           = wakeup_reason_stats_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int __init wakeup_reason_debugfs_init(void)
+{
+	debugfs_create_file("wakeup_reason_stats", S_IFREG | S_IRUGO,
+			NULL, NULL, &wakeup_reason_stats_ops);
+	return 0;
+}
+
+late_initcall(wakeup_reason_debugfs_init);
+#endif /* CONFIG_DEBUG_FS */
+#endif /* CONFIG_ARCH_EXYNOS */

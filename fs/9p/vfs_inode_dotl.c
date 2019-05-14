@@ -87,9 +87,6 @@ static int v9fs_test_inode_dotl(struct inode *inode, void *data)
 
 	if (v9inode->qid.type != st->qid.type)
 		return 0;
-
-	if (v9inode->qid.path != st->qid.path)
-		return 0;
 	return 1;
 }
 
@@ -152,7 +149,8 @@ static struct inode *v9fs_qid_iget_dotl(struct super_block *sb,
 	unlock_new_inode(inode);
 	return inode;
 error:
-	iget_failed(inode);
+	unlock_new_inode(inode);
+	iput(inode);
 	return ERR_PTR(retval);
 
 }

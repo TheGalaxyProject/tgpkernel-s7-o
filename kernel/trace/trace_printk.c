@@ -38,10 +38,6 @@ struct trace_bprintk_fmt {
 static inline struct trace_bprintk_fmt *lookup_format(const char *fmt)
 {
 	struct trace_bprintk_fmt *pos;
-
-	if (!fmt)
-		return ERR_PTR(-EINVAL);
-
 	list_for_each_entry(pos, &trace_bprintk_fmt_list, list) {
 		if (!strcmp(pos->fmt, fmt))
 			return pos;
@@ -63,8 +59,7 @@ void hold_module_trace_bprintk_format(const char **start, const char **end)
 	for (iter = start; iter < end; iter++) {
 		struct trace_bprintk_fmt *tb_fmt = lookup_format(*iter);
 		if (tb_fmt) {
-			if (!IS_ERR(tb_fmt))
-				*iter = tb_fmt->fmt;
+			*iter = tb_fmt->fmt;
 			continue;
 		}
 
@@ -296,10 +291,7 @@ static int t_show(struct seq_file *m, void *v)
 	const char *str = *fmt;
 	int i;
 
-	if (!*fmt)
-		return 0;
-
-	seq_printf(m, "0x%lx : \"", *(unsigned long *)fmt);
+	seq_printf(m, "0x%lx : \"", 0L);
 
 	/*
 	 * Tabs and new lines need to be converted.
@@ -357,7 +349,7 @@ static __init int init_trace_printk_function_export(void)
 	struct dentry *d_tracer;
 
 	d_tracer = tracing_init_dentry();
-	if (IS_ERR(d_tracer))
+	if (!d_tracer)
 		return 0;
 
 	trace_create_file("printk_formats", 0444, d_tracer,

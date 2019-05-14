@@ -31,7 +31,6 @@
  *
  */
 enum fixed_addresses {
-	FIX_HOLE,
 	FIX_EARLYCON_MEM_BASE,
 	__end_of_permanent_fixed_addresses,
 
@@ -49,7 +48,6 @@ enum fixed_addresses {
 
 	FIX_BTMAP_END = __end_of_permanent_fixed_addresses,
 	FIX_BTMAP_BEGIN = FIX_BTMAP_END + TOTAL_FIX_BTMAPS - 1,
-	FIX_TEXT_POKE0,
 	__end_of_fixed_addresses
 };
 
@@ -58,11 +56,10 @@ enum fixed_addresses {
 
 #define FIXMAP_PAGE_IO     __pgprot(PROT_DEVICE_nGnRE)
 
-void __init early_fixmap_init(void);
+extern void __early_set_fixmap(enum fixed_addresses idx,
+			       phys_addr_t phys, pgprot_t flags);
 
-#define __early_set_fixmap __set_fixmap
-
-extern void __set_fixmap(enum fixed_addresses idx, phys_addr_t phys, pgprot_t prot);
+#define __set_fixmap __early_set_fixmap
 
 #include <asm-generic/fixmap.h>
 

@@ -50,12 +50,10 @@ static int change_memory_common(unsigned long addr, int numpages,
 		end = start + size;
 		WARN_ON_ONCE(1);
 	}
-
+#ifndef CONFIG_SENTINEL
 	if (!is_module_address(start) || !is_module_address(end - 1))
 		return -EINVAL;
-
-	if (!numpages)
-		return 0;
+#endif
 
 	data.set_mask = set_mask;
 	data.clear_mask = clear_mask;

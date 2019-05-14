@@ -245,8 +245,7 @@ static inline void __kvm_flush_dcache_pud(pud_t pud)
 
 #define kvm_virt_to_phys(x)		virt_to_idmap((unsigned long)(x))
 
-void kvm_set_way_flush(struct kvm_vcpu *vcpu);
-void kvm_toggle_cache(struct kvm_vcpu *vcpu, bool was_enabled);
+void stage2_flush_vm(struct kvm *kvm);
 
 #endif	/* !__ASSEMBLY__ */
 

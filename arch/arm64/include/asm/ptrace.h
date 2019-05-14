@@ -35,6 +35,10 @@
 #define COMPAT_PTRACE_GETHBPREGS	29
 #define COMPAT_PTRACE_SETHBPREGS	30
 
+/* AArch64 CPSR bits */
+#define CPSR_MODE_MASK		0x0000000f
+#define CPSR_MODE_USR		0x00000000
+
 /* AArch32 CPSR bits */
 #define COMPAT_PSR_MODE_MASK	0x0000001f
 #define COMPAT_PSR_MODE_USR	0x00000010
@@ -116,8 +120,6 @@ struct pt_regs {
 	};
 	u64 orig_x0;
 	u64 syscallno;
-	u64 orig_addr_limit;
-	u64 unused;	// maintain 16 byte alignment
 };
 
 #define arch_has_single_step()	(1)
@@ -185,7 +187,11 @@ static inline int valid_user_regs(struct user_pt_regs *regs)
 
 #define instruction_pointer(regs)	((unsigned long)(regs)->pc)
 
+#ifdef CONFIG_SMP
 extern unsigned long profile_pc(struct pt_regs *regs);
+#else
+#define profile_pc(regs) instruction_pointer(regs)
+#endif
 
 #endif /* __ASSEMBLY__ */
 #endif

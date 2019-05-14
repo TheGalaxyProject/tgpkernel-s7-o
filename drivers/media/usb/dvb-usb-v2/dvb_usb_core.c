@@ -952,9 +952,8 @@ EXPORT_SYMBOL(dvb_usbv2_probe);
 void dvb_usbv2_disconnect(struct usb_interface *intf)
 {
 	struct dvb_usb_device *d = usb_get_intfdata(intf);
-	const char *devname = kstrdup(dev_name(&d->udev->dev), GFP_KERNEL);
-	const char *drvname = d->name;
-
+	const char *name = d->name;
+	struct device dev = d->udev->dev;
 	dev_dbg(&d->udev->dev, "%s: bInterfaceNumber=%d\n", __func__,
 			intf->cur_altsetting->desc.bInterfaceNumber);
 
@@ -963,9 +962,8 @@ void dvb_usbv2_disconnect(struct usb_interface *intf)
 
 	dvb_usbv2_exit(d);
 
-	pr_info("%s: '%s:%s' successfully deinitialized and disconnected\n",
-		KBUILD_MODNAME, drvname, devname);
-	kfree(devname);
+	dev_info(&dev, "%s: '%s' successfully deinitialized and disconnected\n",
+			KBUILD_MODNAME, name);
 }
 EXPORT_SYMBOL(dvb_usbv2_disconnect);
 

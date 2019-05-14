@@ -191,7 +191,7 @@ STORE(__cached_dev)
 {
 	struct cached_dev *dc = container_of(kobj, struct cached_dev,
 					     disk.kobj);
-	ssize_t v = size;
+	unsigned v = size;
 	struct cache_set *c;
 	struct kobj_uevent_env *env;
 
@@ -226,7 +226,7 @@ STORE(__cached_dev)
 		bch_cached_dev_run(dc);
 
 	if (attr == &sysfs_cache_mode) {
-		v = bch_read_string_list(buf, bch_cache_modes + 1);
+		ssize_t v = bch_read_string_list(buf, bch_cache_modes + 1);
 
 		if (v < 0)
 			return v;

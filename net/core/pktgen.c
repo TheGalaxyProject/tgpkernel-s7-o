@@ -211,8 +211,8 @@
 #define T_REMDEV      (1<<3)	/* Remove one dev */
 
 /* If lock -- protects updating of if_list */
-#define   if_lock(t)           mutex_lock(&(t->if_lock));
-#define   if_unlock(t)           mutex_unlock(&(t->if_lock));
+#define   if_lock(t)           spin_lock(&(t->if_lock));
+#define   if_unlock(t)           spin_unlock(&(t->if_lock));
 
 /* Used to help with determining the pkts on receive */
 #define PKTGEN_MAGIC 0xbe9be955
@@ -418,7 +418,7 @@ struct pktgen_net {
 };
 
 struct pktgen_thread {
-	struct mutex if_lock;		/* for list of devices */
+	spinlock_t if_lock;		/* for list of devices */
 	struct list_head if_list;	/* All device here */
 	struct list_head th_list;
 	struct task_struct *tsk;
@@ -1952,13 +1952,11 @@ static void pktgen_change_name(const struct pktgen_net *pn, struct net_device *d
 {
 	struct pktgen_thread *t;
 
-	mutex_lock(&pktgen_thread_lock);
-
 	list_for_each_entry(t, &pn->pktgen_threads, th_list) {
 		struct pktgen_dev *pkt_dev;
 
-		if_lock(t);
-		list_for_each_entry(pkt_dev, &t->if_list, list) {
+		rcu_read_lock();
+		list_for_each_entry_rcu(pkt_dev, &t->if_list, list) {
 			if (pkt_dev->odev != dev)
 				continue;
 
@@ -1973,9 +1971,8 @@ static void pktgen_change_name(const struct pktgen_net *pn, struct net_device *d
 				       dev->name);
 			break;
 		}
-		if_unlock(t);
+		rcu_read_unlock();
 	}
-	mutex_unlock(&pktgen_thread_lock);
 }
 
 static int pktgen_device_event(struct notifier_block *unused,
@@ -3493,10 +3490,8 @@ static int pktgen_thread_worker(void *arg)
 	pktgen_rem_thread(t);
 
 	/* Wait for kthread_stop */
-	for (;;) {
+	while (!kthread_should_stop()) {
 		set_current_state(TASK_INTERRUPTIBLE);
-		if (kthread_should_stop())
-			break;
 		schedule();
 	}
 	__set_current_state(TASK_RUNNING);
@@ -3659,7 +3654,7 @@ static int __net_init pktgen_create_thread(int cpu, struct pktgen_net *pn)
 		return -ENOMEM;
 	}
 
-	mutex_init(&t->if_lock);
+	spin_lock_init(&t->if_lock);
 	t->cpu = cpu;
 
 	INIT_LIST_HEAD(&t->if_list);

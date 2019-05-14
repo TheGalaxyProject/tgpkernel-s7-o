@@ -16,8 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/linkage.h>
-
-#include <asm/uaccess.h>
+#include <asm/assembler.h>
 
 	.text
 
@@ -30,27 +29,25 @@
  * Alignment fixed up by hardware.
  */
 ENTRY(__clear_user)
-	uaccess_enable_not_uao x2, x3
 	mov	x2, x1			// save the size for fixup return
 	subs	x1, x1, #8
 	b.mi	2f
 1:
-uao_user_alternative 9f, str, sttr, xzr, x0, 8
+USER(9f, str	xzr, [x0], #8	)
 	subs	x1, x1, #8
 	b.pl	1b
 2:	adds	x1, x1, #4
 	b.mi	3f
-uao_user_alternative 9f, str, sttr, wzr, x0, 4
+USER(9f, str	wzr, [x0], #4	)
 	sub	x1, x1, #4
 3:	adds	x1, x1, #2
 	b.mi	4f
-uao_user_alternative 9f, strh, sttrh, wzr, x0, 2
+USER(9f, strh	wzr, [x0], #2	)
 	sub	x1, x1, #2
 4:	adds	x1, x1, #1
 	b.mi	5f
-uao_user_alternative 9f, strb, sttrb, wzr, x0, 0
+USER(9f, strb	wzr, [x0]	)
 5:	mov	x0, #0
-	uaccess_disable_not_uao x2
 	ret
 ENDPROC(__clear_user)
 

@@ -338,12 +338,6 @@ struct acpi_device_physical_node {
 	bool put_online:1;
 };
 
-/* ACPI Device Specific Data (_DSD) */
-struct acpi_device_data {
-	const union acpi_object *pointer;
-	const union acpi_object *properties;
-};
-
 /* Device */
 struct acpi_device {
 	int device_type;
@@ -360,7 +354,6 @@ struct acpi_device {
 	struct acpi_device_wakeup wakeup;
 	struct acpi_device_perf performance;
 	struct acpi_device_dir dir;
-	struct acpi_device_data data;
 	struct acpi_scan_handler *handler;
 	struct acpi_hotplug_context *hp;
 	struct acpi_driver *driver;

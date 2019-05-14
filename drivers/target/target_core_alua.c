@@ -1126,11 +1126,13 @@ static int core_alua_do_transition_tg_pt(
 		unsigned long transition_tmo;
 
 		transition_tmo = tg_pt_gp->tg_pt_gp_implicit_trans_secs * HZ;
-		schedule_delayed_work(&tg_pt_gp->tg_pt_gp_transition_work,
-				      transition_tmo);
+		queue_delayed_work(tg_pt_gp->tg_pt_gp_dev->tmr_wq,
+				   &tg_pt_gp->tg_pt_gp_transition_work,
+				   transition_tmo);
 	} else {
 		tg_pt_gp->tg_pt_gp_transition_complete = &wait;
-		schedule_delayed_work(&tg_pt_gp->tg_pt_gp_transition_work, 0);
+		queue_delayed_work(tg_pt_gp->tg_pt_gp_dev->tmr_wq,
+				   &tg_pt_gp->tg_pt_gp_transition_work, 0);
 		wait_for_completion(&wait);
 		tg_pt_gp->tg_pt_gp_transition_complete = NULL;
 	}

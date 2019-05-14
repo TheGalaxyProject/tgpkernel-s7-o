@@ -14,10 +14,8 @@
 #include <linux/slab.h>
 #include <linux/sysctl.h>
 
-#include <asm/cpufeature.h>
 #include <asm/insn.h>
 #include <asm/opcodes.h>
-#include <asm/sysreg.h>
 #include <asm/system_misc.h>
 #include <asm/traps.h>
 #include <asm/uaccess.h>
@@ -61,7 +59,7 @@ struct insn_emulation {
 };
 
 static LIST_HEAD(insn_emulation);
-static int nr_insn_emulated __initdata;
+static int nr_insn_emulated;
 static DEFINE_RAW_SPINLOCK(insn_emulation_lock);
 
 static void register_emulation_hooks(struct insn_emulation_ops *ops)
@@ -172,7 +170,7 @@ static int update_insn_emulation_mode(struct insn_emulation *insn,
 	return ret;
 }
 
-static void __init register_insn_emulation(struct insn_emulation_ops *ops)
+static void register_insn_emulation(struct insn_emulation_ops *ops)
 {
 	unsigned long flags;
 	struct insn_emulation *insn;
@@ -236,7 +234,7 @@ static struct ctl_table ctl_abi[] = {
 	{ }
 };
 
-static void __init register_insn_emulation_sysctl(struct ctl_table *table)
+static void register_insn_emulation_sysctl(struct ctl_table *table)
 {
 	unsigned long flags;
 	int i = 0;
@@ -280,8 +278,6 @@ static void __init register_insn_emulation_sysctl(struct ctl_table *table)
  * Error-checking SWP macros implemented using ldxr{b}/stxr{b}
  */
 #define __user_swpX_asm(data, addr, res, temp, B)		\
-do {								\
-	uaccess_enable();					\
 	__asm__ __volatile__(					\
 	"	mov		%w2, %w1\n"			\
 	"0:	ldxr"B"		%w1, [%3]\n"			\
@@ -298,12 +294,10 @@ do {								\
 	"	.align		3\n"				\
 	"	.quad		0b, 3b\n"			\
 	"	.quad		1b, 3b\n"			\
-	"	.popsection\n"					\
+	"	.popsection"					\
 	: "=&r" (res), "+r" (data), "=&r" (temp)		\
 	: "r" (addr), "i" (-EAGAIN), "i" (-EFAULT)		\
-	: "memory");						\
-	uaccess_disable();					\
-} while (0)
+	: "memory")
 
 #define __user_swp_asm(data, addr, res, temp) \
 	__user_swpX_asm(data, addr, res, temp, "")
@@ -508,6 +502,16 @@ ret:
 
 	regs->pc += 4;
 	return 0;
+}
+
+static inline void config_sctlr_el1(u32 clear, u32 set)
+{
+	u32 val;
+
+	asm volatile("mrs %0, sctlr_el1" : "=r" (val));
+	val &= ~clear;
+	val |= set;
+	asm volatile("msr sctlr_el1, %0" : : "r" (val));
 }
 
 static int cp15_barrier_set_hw_mode(bool enable)

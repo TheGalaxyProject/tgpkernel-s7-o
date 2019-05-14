@@ -336,8 +336,6 @@ EXPORT_SYMBOL_GPL(ring_buffer_event_data);
 /* Missed count stored at end */
 #define RB_MISSED_STORED	(1 << 30)
 
-#define RB_MISSED_FLAGS		(RB_MISSED_EVENTS|RB_MISSED_STORED)
-
 struct buffer_data_page {
 	u64		 time_stamp;	/* page time stamp */
 	local_t		 commit;	/* write committed index */
@@ -389,9 +387,7 @@ static void rb_init_page(struct buffer_data_page *bpage)
  */
 size_t ring_buffer_page_len(void *page)
 {
-	struct buffer_data_page *bpage = page;
-
-	return (local_read(&bpage->commit) & ~RB_MISSED_FLAGS)
+	return local_read(&((struct buffer_data_page *)page)->commit)
 		+ BUF_PAGE_HDR_SIZE;
 }
 
@@ -470,8 +466,7 @@ struct ring_buffer_per_cpu {
 	raw_spinlock_t			reader_lock;	/* serialize readers */
 	arch_spinlock_t			lock;
 	struct lock_class_key		lock_key;
-	unsigned long			nr_pages;
-	unsigned int			current_context;
+	unsigned int			nr_pages;
 	struct list_head		*pages;
 	struct buffer_page		*head_page;	/* read from head */
 	struct buffer_page		*tail_page;	/* write to tail */
@@ -491,7 +486,7 @@ struct ring_buffer_per_cpu {
 	u64				write_stamp;
 	u64				read_stamp;
 	/* ring buffer pages to update, > 0 to add, < 0 to remove */
-	long				nr_pages_to_update;
+	int				nr_pages_to_update;
 	struct list_head		new_pages; /* new pages to add */
 	struct work_struct		update_pages_work;
 	struct completion		update_done;
@@ -1170,10 +1165,10 @@ static int rb_check_pages(struct ring_buffer_per_cpu *cpu_buffer)
 	return 0;
 }
 
-static int __rb_allocate_pages(long nr_pages, struct list_head *pages, int cpu)
+static int __rb_allocate_pages(int nr_pages, struct list_head *pages, int cpu)
 {
+	int i;
 	struct buffer_page *bpage, *tmp;
-	long i;
 
 	for (i = 0; i < nr_pages; i++) {
 		struct page *page;
@@ -1210,7 +1205,7 @@ free_pages:
 }
 
 static int rb_allocate_pages(struct ring_buffer_per_cpu *cpu_buffer,
-			     unsigned long nr_pages)
+			     unsigned nr_pages)
 {
 	LIST_HEAD(pages);
 
@@ -1235,7 +1230,7 @@ static int rb_allocate_pages(struct ring_buffer_per_cpu *cpu_buffer,
 }
 
 static struct ring_buffer_per_cpu *
-rb_allocate_cpu_buffer(struct ring_buffer *buffer, long nr_pages, int cpu)
+rb_allocate_cpu_buffer(struct ring_buffer *buffer, int nr_pages, int cpu)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
 	struct buffer_page *bpage;
@@ -1335,9 +1330,8 @@ struct ring_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 					struct lock_class_key *key)
 {
 	struct ring_buffer *buffer;
-	long nr_pages;
 	int bsize;
-	int cpu;
+	int cpu, nr_pages;
 
 	/* keep it in its own cache line */
 	buffer = kzalloc(ALIGN(sizeof(*buffer), cache_line_size()),
@@ -1463,12 +1457,12 @@ static inline unsigned long rb_page_write(struct buffer_page *bpage)
 }
 
 static int
-rb_remove_pages(struct ring_buffer_per_cpu *cpu_buffer, unsigned long nr_pages)
+rb_remove_pages(struct ring_buffer_per_cpu *cpu_buffer, unsigned int nr_pages)
 {
 	struct list_head *tail_page, *to_remove, *next_page;
 	struct buffer_page *to_remove_page, *tmp_iter_page;
 	struct buffer_page *last_page, *first_page;
-	unsigned long nr_removed;
+	unsigned int nr_removed;
 	unsigned long head_bit;
 	int page_entries;
 
@@ -1685,7 +1679,7 @@ int ring_buffer_resize(struct ring_buffer *buffer, unsigned long size,
 			int cpu_id)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
-	unsigned long nr_pages;
+	unsigned nr_pages;
 	int cpu, err = 0;
 
 	/*
@@ -2685,11 +2679,11 @@ rb_reserve_next_event(struct ring_buffer *buffer,
  * just so happens that it is the same bit corresponding to
  * the current context.
  */
+static DEFINE_PER_CPU(unsigned int, current_context);
 
-static __always_inline int
-trace_recursive_lock(struct ring_buffer_per_cpu *cpu_buffer)
+static __always_inline int trace_recursive_lock(void)
 {
-	unsigned int val = cpu_buffer->current_context;
+	unsigned int val = __this_cpu_read(current_context);
 	int bit;
 
 	if (in_interrupt()) {
@@ -2706,21 +2700,23 @@ trace_recursive_lock(struct ring_buffer_per_cpu *cpu_buffer)
 		return 1;
 
 	val |= (1 << bit);
-	cpu_buffer->current_context = val;
+	__this_cpu_write(current_context, val);
 
 	return 0;
 }
 
-static __always_inline void
-trace_recursive_unlock(struct ring_buffer_per_cpu *cpu_buffer)
+static __always_inline void trace_recursive_unlock(void)
 {
-	cpu_buffer->current_context &= cpu_buffer->current_context - 1;
+	unsigned int val = __this_cpu_read(current_context);
+
+	val &= val & (val - 1);
+	__this_cpu_write(current_context, val);
 }
 
 #else
 
-#define trace_recursive_lock(cpu_buffer)	(0)
-#define trace_recursive_unlock(cpu_buffer)	do { } while (0)
+#define trace_recursive_lock()		(0)
+#define trace_recursive_unlock()	do { } while (0)
 
 #endif
 
@@ -2752,34 +2748,35 @@ ring_buffer_lock_reserve(struct ring_buffer *buffer, unsigned long length)
 	/* If we are tracing schedule, we don't want to recurse */
 	preempt_disable_notrace();
 
-	if (unlikely(atomic_read(&buffer->record_disabled)))
-		goto out;
+	if (atomic_read(&buffer->record_disabled))
+		goto out_nocheck;
+
+	if (trace_recursive_lock())
+		goto out_nocheck;
 
 	cpu = raw_smp_processor_id();
 
-	if (unlikely(!cpumask_test_cpu(cpu, buffer->cpumask)))
+	if (!cpumask_test_cpu(cpu, buffer->cpumask))
 		goto out;
 
 	cpu_buffer = buffer->buffers[cpu];
 
-	if (unlikely(atomic_read(&cpu_buffer->record_disabled)))
+	if (atomic_read(&cpu_buffer->record_disabled))
 		goto out;
 
-	if (unlikely(length > BUF_MAX_DATA_SIZE))
-		goto out;
-
-	if (unlikely(trace_recursive_lock(cpu_buffer)))
+	if (length > BUF_MAX_DATA_SIZE)
 		goto out;
 
 	event = rb_reserve_next_event(buffer, cpu_buffer, length);
 	if (!event)
-		goto out_unlock;
+		goto out;
 
 	return event;
 
- out_unlock:
-	trace_recursive_unlock(cpu_buffer);
  out:
+	trace_recursive_unlock();
+
+ out_nocheck:
 	preempt_enable_notrace();
 	return NULL;
 }
@@ -2869,7 +2866,7 @@ int ring_buffer_unlock_commit(struct ring_buffer *buffer,
 
 	rb_wakeups(buffer, cpu_buffer);
 
-	trace_recursive_unlock(cpu_buffer);
+	trace_recursive_unlock();
 
 	preempt_enable_notrace();
 
@@ -2980,7 +2977,7 @@ void ring_buffer_discard_commit(struct ring_buffer *buffer,
  out:
 	rb_end_commit(cpu_buffer);
 
-	trace_recursive_unlock(cpu_buffer);
+	trace_recursive_unlock();
 
 	preempt_enable_notrace();
 
@@ -3455,23 +3452,11 @@ EXPORT_SYMBOL_GPL(ring_buffer_iter_reset);
 int ring_buffer_iter_empty(struct ring_buffer_iter *iter)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
-	struct buffer_page *reader;
-	struct buffer_page *head_page;
-	struct buffer_page *commit_page;
-	unsigned commit;
 
 	cpu_buffer = iter->cpu_buffer;
 
-	/* Remember, trace recording is off when iterator is in use */
-	reader = cpu_buffer->reader_page;
-	head_page = cpu_buffer->head_page;
-	commit_page = cpu_buffer->commit_page;
-	commit = rb_page_commit(commit_page);
-
-	return ((iter->head_page == commit_page && iter->head == commit) ||
-		(iter->head_page == reader && commit_page == head_page &&
-		 head_page->read == commit &&
-		 iter->head == rb_page_commit(cpu_buffer->reader_page)));
+	return iter->head_page == cpu_buffer->commit_page &&
+		iter->head == rb_commit_index(cpu_buffer);
 }
 EXPORT_SYMBOL_GPL(ring_buffer_iter_empty);
 
@@ -4669,9 +4654,8 @@ static int rb_cpu_notify(struct notifier_block *self,
 	struct ring_buffer *buffer =
 		container_of(self, struct ring_buffer, cpu_notify);
 	long cpu = (long)hcpu;
-	long nr_pages_same;
-	int cpu_i;
-	unsigned long nr_pages;
+	int cpu_i, nr_pages_same;
+	unsigned int nr_pages;
 
 	switch (action) {
 	case CPU_UP_PREPARE:
@@ -4899,9 +4883,9 @@ static __init int test_ringbuffer(void)
 		rb_data[cpu].cnt = cpu;
 		rb_threads[cpu] = kthread_create(rb_test, &rb_data[cpu],
 						 "rbtester/%d", cpu);
-		if (WARN_ON(IS_ERR(rb_threads[cpu]))) {
+		if (WARN_ON(!rb_threads[cpu])) {
 			pr_cont("FAILED\n");
-			ret = PTR_ERR(rb_threads[cpu]);
+			ret = -1;
 			goto out_free;
 		}
 
@@ -4911,9 +4895,9 @@ static __init int test_ringbuffer(void)
 
 	/* Now create the rb hammer! */
 	rb_hammer = kthread_run(rb_hammer_test, NULL, "rbhammer");
-	if (WARN_ON(IS_ERR(rb_hammer))) {
+	if (WARN_ON(!rb_hammer)) {
 		pr_cont("FAILED\n");
-		ret = PTR_ERR(rb_hammer);
+		ret = -1;
 		goto out_free;
 	}
 

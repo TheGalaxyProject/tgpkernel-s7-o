@@ -13,7 +13,6 @@
 #include <linux/page-debug-flags.h>
 #include <linux/uprobes.h>
 #include <linux/page-flags-layout.h>
-#include <linux/workqueue.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
 
@@ -42,6 +41,32 @@ struct address_space;
  * allows the use of atomic double word operations on the flags/mapping
  * and lru list pointers also.
  */
+
+#ifdef CONFIG_PTRACK_DEBUG
+#define PTRACK_ADDRS_COUNT 16
+#define MEMBLOCK_NUM 3
+struct ptrack {
+	unsigned long addr;	/* Called from address */
+#ifdef CONFIG_STACKTRACE
+	unsigned long addrs[PTRACK_ADDRS_COUNT];	/* Called from address */
+#endif
+	int cpu;		/* Was running on cpu */
+	int pid;		/* Pid context */
+	u64 when;		/* When did the operation occur */
+};
+
+struct ptrack_info {
+	unsigned long memblockcnt;
+	struct ptrack **tables[MEMBLOCK_NUM];
+	unsigned long tables_size[MEMBLOCK_NUM];
+};
+
+enum ptrack_item {
+	PTRACK_ALLOC = 0,
+	PTRACK_FREE,
+	PTRACK_ITEM_NUM};
+#endif
+
 struct page {
 	/* First double word block */
 	unsigned long flags;		/* Atomic flags, some possibly
@@ -196,6 +221,10 @@ struct page {
 
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 	int _last_cpupid;
+#endif
+
+#ifdef CONFIG_PTRACK_DEBUG
+	struct ptrack * ptrack;
 #endif
 }
 /*
@@ -460,7 +489,7 @@ struct mm_struct {
 	bool tlb_flush_pending;
 #endif
 	struct uprobes_state uprobes_state;
-	struct work_struct async_put_work;
+	void *async_put_work;
 };
 
 static inline void mm_init_cpumask(struct mm_struct *mm)

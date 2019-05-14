@@ -20,8 +20,6 @@
 #define ADDRCONF_TIMER_FUZZ		(HZ / 4)
 #define ADDRCONF_TIMER_FUZZ_MAX		(HZ)
 
-#define ADDRCONF_NOTIFY_PRIORITY	0
-
 #include <linux/in.h>
 #include <linux/in6.h>
 

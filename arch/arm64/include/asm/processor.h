@@ -31,7 +31,6 @@
 
 #include <asm/fpsimd.h>
 #include <asm/hw_breakpoint.h>
-#include <asm/pgtable-hwdef.h>
 #include <asm/ptrace.h>
 #include <asm/types.h>
 
@@ -166,8 +165,5 @@ static inline void spin_lock_prefetch(const void *x)
 #define HAVE_ARCH_PICK_MMAP_LAYOUT
 
 #endif
-
-void cpu_enable_pan(void *__unused);
-void cpu_enable_uao(void *__unused);
 
 #endif /* __ASM_PROCESSOR_H */

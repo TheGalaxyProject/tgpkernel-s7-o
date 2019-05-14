@@ -33,7 +33,7 @@
 static __initdata char chosen_lsm[SECURITY_NAME_MAX + 1] =
 	CONFIG_DEFAULT_SECURITY;
 
-static struct security_operations *security_ops;
+RKP_RO_AREA static struct security_operations *security_ops;
 static struct security_operations default_security_ops = {
 	.name	= "default",
 };
@@ -492,7 +492,6 @@ int security_path_chown(struct path *path, kuid_t uid, kgid_t gid)
 		return 0;
 	return security_ops->path_chown(path, uid, gid);
 }
-EXPORT_SYMBOL(security_path_chown);
 
 int security_path_chroot(struct path *path)
 {

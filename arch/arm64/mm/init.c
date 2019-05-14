@@ -68,25 +68,40 @@ early_param("initrd", early_initrd);
  * currently assumes that for memory starting above 4G, 32-bit devices will
  * use a DMA offset.
  */
-static phys_addr_t __init max_zone_dma_phys(void)
+static phys_addr_t max_zone_dma_phys(void)
 {
 	phys_addr_t offset = memblock_start_of_DRAM() & GENMASK_ULL(63, 32);
 	return min(offset + (1ULL << 32), memblock_end_of_DRAM());
 }
+
+#ifdef CONFIG_ZONE_DMA_ALLOW_CUSTOM_SIZE
+#ifndef CONFIG_ZONE_DMA_SIZE_MBYTES
+#define ZONE_DMA_SIZE_BYTES	((u32)-1)
+#else
+#define ZONE_DMA_SIZE_BYTES	((u32)((CONFIG_ZONE_DMA_SIZE_MBYTES << 20) - 1))
+#endif
+#endif
 
 static void __init zone_sizes_init(unsigned long min, unsigned long max)
 {
 	struct memblock_region *reg;
 	unsigned long zone_size[MAX_NR_ZONES], zhole_size[MAX_NR_ZONES];
 	unsigned long max_dma = min;
-
+#ifdef CONFIG_ZONE_DMA
+	unsigned long max_dma_phys, dma_end;
+#endif
 	memset(zone_size, 0, sizeof(zone_size));
 
-	/* 4GB maximum for 32-bit only capable devices */
-	if (IS_ENABLED(CONFIG_ZONE_DMA)) {
-		max_dma = PFN_DOWN(max_zone_dma_phys());
-		zone_size[ZONE_DMA] = max_dma - min;
-	}
+#ifdef CONFIG_ZONE_DMA
+#ifdef CONFIG_ZONE_DMA_ALLOW_CUSTOM_SIZE
+	max_dma_phys = (unsigned long)dma_to_phys(NULL,
+			(min << PAGE_SHIFT) + ZONE_DMA_SIZE_BYTES + 1);
+#else
+	max_dma_phys = (unsigned long)dma_to_phys(NULL, DMA_BIT_MASK(32) + 1);
+#endif /* CONFIG_ZONE_DMA_ALLOW_CUSTOM_SIZE */
+	max_dma = max(min, min(max, max_dma_phys >> PAGE_SHIFT));
+	zone_size[ZONE_DMA] = max_dma - min;
+#endif /* CONFIG_ZONE_DMA */
 	zone_size[ZONE_NORMAL] = max - max_dma;
 
 	memcpy(zhole_size, zone_size, sizeof(zhole_size));
@@ -98,11 +113,12 @@ static void __init zone_sizes_init(unsigned long min, unsigned long max)
 		if (start >= max)
 			continue;
 
-		if (IS_ENABLED(CONFIG_ZONE_DMA) && start < max_dma) {
-			unsigned long dma_end = min(end, max_dma);
+#ifdef CONFIG_ZONE_DMA
+		if (start < max_dma) {
+			dma_end = min(end, max_dma);
 			zhole_size[ZONE_DMA] -= dma_end - start;
 		}
-
+#endif
 		if (end > max_dma) {
 			unsigned long normal_end = min(end, max);
 			unsigned long normal_start = max(start, max_dma);
@@ -124,11 +140,11 @@ EXPORT_SYMBOL(pfn_valid);
 #endif
 
 #ifndef CONFIG_SPARSEMEM
-static void __init arm64_memory_present(void)
+static void arm64_memory_present(void)
 {
 }
 #else
-static void __init arm64_memory_present(void)
+static void arm64_memory_present(void)
 {
 	struct memblock_region *reg;
 
@@ -157,8 +173,6 @@ void __init arm64_memblock_init(void)
 	/* 4GB maximum for 32-bit only capable devices */
 	if (IS_ENABLED(CONFIG_ZONE_DMA))
 		dma_phys_limit = max_zone_dma_phys();
-
-	high_memory = __va(memblock_end_of_DRAM() - 1) + 1;
 	dma_contiguous_reserve(dma_phys_limit);
 
 	memblock_allow_resize();
@@ -181,6 +195,7 @@ void __init bootmem_init(void)
 	sparse_init();
 	zone_sizes_init(min, max);
 
+	high_memory = __va((max << PAGE_SHIFT) - 1) + 1;
 	max_pfn = max_low_pfn = max;
 }
 
@@ -241,7 +256,7 @@ static void __init free_unused_memmap(void)
 		 * memmap entries are valid from the bank end aligned to
 		 * MAX_ORDER_NR_PAGES.
 		 */
-		prev_end = ALIGN(__phys_to_pfn(reg->base + reg->size),
+		prev_end = ALIGN(start + __phys_to_pfn(reg->size),
 				 MAX_ORDER_NR_PAGES);
 	}
 
@@ -289,8 +304,8 @@ void __init mem_init(void)
 		  "      .data : 0x%p" " - 0x%p" "   (%6ld KB)\n",
 		  MLG(VMALLOC_START, VMALLOC_END),
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
-		  MLG(VMEMMAP_START,
-		      VMEMMAP_START + VMEMMAP_SIZE),
+		  MLG((unsigned long)vmemmap,
+		      (unsigned long)vmemmap + VMEMMAP_SIZE),
 		  MLM((unsigned long)virt_to_page(PAGE_OFFSET),
 		      (unsigned long)virt_to_page(high_memory)),
 #endif
@@ -328,9 +343,11 @@ void __init mem_init(void)
 
 void free_initmem(void)
 {
-	fixup_init();
 	free_initmem_default(0);
 	free_alternatives_memory();
+#ifdef CONFIG_TIMA_RKP
+	rkp_call(RKP_DEF_INIT, 0, 0, 0, 0, 0);
+#endif
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD

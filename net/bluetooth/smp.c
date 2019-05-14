@@ -22,7 +22,6 @@
 
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
-#include <crypto/algapi.h>
 #include <crypto/b128ops.h>
 
 #include <net/bluetooth/bluetooth.h>
@@ -164,7 +163,7 @@ bool smp_irk_matches(struct hci_dev *hdev, u8 irk[16], bdaddr_t *bdaddr)
 	if (err)
 		return false;
 
-	return !crypto_memneq(bdaddr->b, hash, 3);
+	return !memcmp(bdaddr->b, hash, 3);
 }
 
 int smp_generate_rpa(struct hci_dev *hdev, u8 irk[16], bdaddr_t *rpa)
@@ -585,7 +584,7 @@ static u8 smp_random(struct smp_chan *smp)
 	if (ret)
 		return SMP_UNSPECIFIED;
 
-	if (crypto_memneq(smp->pcnf, confirm, sizeof(smp->pcnf))) {
+	if (memcmp(smp->pcnf, confirm, sizeof(smp->pcnf)) != 0) {
 		BT_ERR("Pairing failed (confirmation values mismatch)");
 		return SMP_CONFIRM_FAILED;
 	}

@@ -103,7 +103,6 @@ void tcp_init_congestion_control(struct sock *sk)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
 
-	tcp_sk(sk)->prior_ssthresh = 0;
 	if (icsk->icsk_ca_ops->init)
 		icsk->icsk_ca_ops->init(sk);
 }
@@ -249,10 +248,9 @@ int tcp_set_congestion_control(struct sock *sk, const char *name)
 	ca = tcp_ca_find(name);
 
 	/* no change asking for existing value */
-	if (ca == icsk->icsk_ca_ops) {
-		icsk->icsk_ca_setsockopt = 1;
+	if (ca == icsk->icsk_ca_ops)
 		goto out;
-	}
+
 #ifdef CONFIG_MODULES
 	/* not found attempt to autoload module */
 	if (!ca && capable(CAP_NET_ADMIN)) {
@@ -275,7 +273,6 @@ int tcp_set_congestion_control(struct sock *sk, const char *name)
 	else {
 		tcp_cleanup_congestion_control(sk);
 		icsk->icsk_ca_ops = ca;
-		icsk->icsk_ca_setsockopt = 1;
 
 		if (sk->sk_state != TCP_CLOSE && icsk->icsk_ca_ops->init)
 			icsk->icsk_ca_ops->init(sk);

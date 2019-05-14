@@ -30,7 +30,7 @@
  * SOFTWARE.
  */
 
-#include <linux/highmem.h>
+#include <asm-generic/kmap_types.h>
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/pci.h>

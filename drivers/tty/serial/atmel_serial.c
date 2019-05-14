@@ -311,7 +311,8 @@ void atmel_config_rs485(struct uart_port *port, struct serial_rs485 *rs485conf)
 	if (rs485conf->flags & SER_RS485_ENABLED) {
 		dev_dbg(port->dev, "Setting UART to RS485\n");
 		atmel_port->tx_done_mask = ATMEL_US_TXEMPTY;
-		UART_PUT_TTGR(port, rs485conf->delay_rts_after_send);
+		if ((rs485conf->delay_rts_after_send) > 0)
+			UART_PUT_TTGR(port, rs485conf->delay_rts_after_send);
 		mode |= ATMEL_US_USMODE_RS485;
 	} else {
 		dev_dbg(port->dev, "Setting UART to RS232\n");
@@ -1867,11 +1868,6 @@ static void atmel_flush_buffer(struct uart_port *port)
 		UART_PUT_TCR(port, 0);
 		atmel_port->pdc_tx.ofs = 0;
 	}
-	/*
-	 * in uart_flush_buffer(), the xmit circular buffer has just
-	 * been cleared, so we have to reset tx_len accordingly.
-	 */
-	sg_dma_len(&atmel_port->sg_tx) = 0;
 }
 
 /*
@@ -2020,7 +2016,9 @@ static void atmel_set_termios(struct uart_port *port, struct ktermios *termios,
 	mode &= ~ATMEL_US_USMODE;
 
 	if (atmel_port->rs485.flags & SER_RS485_ENABLED) {
-		UART_PUT_TTGR(port, atmel_port->rs485.delay_rts_after_send);
+		if ((atmel_port->rs485.delay_rts_after_send) > 0)
+			UART_PUT_TTGR(port,
+					atmel_port->rs485.delay_rts_after_send);
 		mode |= ATMEL_US_USMODE_RS485;
 	}
 
