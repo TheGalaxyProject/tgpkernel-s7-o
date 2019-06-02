@@ -310,7 +310,7 @@ config NET_IPVTI
 config NET_UDP_TUNNEL
 	tristate
 	select NET_IP_TUNNEL
-	default n
+	default y
 
 config NET_FOU
 	tristate "IP: Foo (IP protocols) over UDP"
